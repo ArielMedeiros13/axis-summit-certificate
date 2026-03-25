@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 180" role="img" aria-labelledby="title desc">
+  <title id="title">Institutional Logos Placeholder</title>
+  <desc id="desc">Redacted institutional logo strip used in place of the production partner artwork.</desc>
+  <rect width="1200" height="180" fill="#060910"/>
+  <g fill="none" stroke="#ff8a1f" stroke-width="2" opacity=".85">
+    <rect x="60" y="50" width="180" height="80" rx="16"/>
+    <rect x="285" y="50" width="180" height="80" rx="16"/>
+    <rect x="510" y="50" width="180" height="80" rx="16"/>
+    <rect x="735" y="50" width="180" height="80" rx="16"/>
+    <rect x="960" y="50" width="180" height="80" rx="16"/>
+  </g>
+  <g fill="#f8f4ec" font-family="Arial, sans-serif" font-size="28" font-weight="700" text-anchor="middle">
+    <text x="150" y="98">Partner A</text>
+    <text x="375" y="98">Partner B</text>
+    <text x="600" y="98">Partner C</text>
+    <text x="825" y="98">Partner D</text>
+    <text x="1050" y="98">Partner E</text>
+  </g>
+</svg>

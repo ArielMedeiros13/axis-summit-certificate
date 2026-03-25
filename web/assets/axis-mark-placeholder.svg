@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">AXIS Placeholder Mark</title>
+  <desc id="desc">Redacted brand asset placeholder for the portfolio repository.</desc>
+  <rect width="128" height="128" rx="28" fill="#0b0d12"/>
+  <path d="M18 96 52 32h14l34 64H84L72 72H46L34 96H18Zm34-36h14L59 46 52 60Z" fill="#ff8a1f"/>
+</svg>

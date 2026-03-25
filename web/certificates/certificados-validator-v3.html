@@ -1,0 +1,653 @@
+﻿<!doctype html>
+<!--
+  Module: Public certificate validation page.
+  What it does: Accepts a validation code, calls the backend validation endpoint, and renders a minimal public-safe view of the certificate record.
+  Key design decisions: Keeps the page self-contained, strips private identity fields from the public render, and supports direct deep links from certificate QR codes.
+  System connections: Loads `certificados-v3.js` for shared API helpers and validates against `apps-script/axis-certificados.gs`.
+-->
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <title>Validação de Certificado — AXIS Summit 2026</title>
+
+  <link rel="icon" href="../assets/axis-mark-placeholder.svg" type="image/svg+xml"/>
+  <link rel="apple-touch-icon" href="../assets/axis-mark-placeholder.svg"/>
+  <meta name="theme-color" content="#0b0d12"/>
+
+  <!-- CSS do site — progressive enhancement; página funciona sem ele -->
+
+  <style>
+    /* ═══════════════════════════════════════════════════════════════
+       VALIDADOR — AXIS Summit 2026  |  CSS AUTOSSUFICIENTE v6
+    ═══════════════════════════════════════════════════════════════ */
+
+    :root {
+      --orange:       #ff8a1f;
+      --orange-dim:   #e07018;
+      --orange-soft:  rgba(255,138,31,0.10);
+      --orange-soft2: rgba(255,138,31,0.06);
+      --orange-line:  rgba(255,138,31,0.28);
+      --amber:        #ffb347;
+      --amber-warm:   #ffc96e;
+      --text:         #f8f4ec;
+      --text-2:       #d8d0c4;
+      --muted:        rgba(248,244,236,0.62);
+      --muted-2:      rgba(248,244,236,0.48);
+      --muted-3:      rgba(248,244,236,0.32);
+      --line:         rgba(255,255,255,0.08);
+      --line-med:     rgba(255,255,255,0.12);
+      --surface-2:    rgba(255,255,255,0.07);
+      --surface-3:    rgba(255,255,255,0.04);
+      --teal-soft:    rgba(74,222,180,0.10);
+      --teal-text:    #4adeb4;
+      --teal-line:    rgba(74,222,180,0.22);
+      --r-l:          10px;
+      --r-m:          8px;
+      --r-xl:         18px;
+      --r-2xl:        24px;
+      --shadow-m:     0 8px 32px rgba(0,0,0,0.28);
+      --px:           1.25rem;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Nunito', system-ui, -apple-system, sans-serif;
+      background: #0b0d12; color: var(--text);
+      min-height: 100vh; -webkit-font-smoothing: antialiased;
+    }
+
+    .bg-glow {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(255,138,31,0.07), transparent);
+    }
+    .site-header {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; gap: 1rem;
+      padding: 0.75rem var(--px);
+      background: rgba(11,13,18,0.88); backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line);
+    }
+    .header-brand { display: flex; align-items: center; text-decoration: none; }
+    .header-logo  { height: 32px; width: auto; display: block; }
+    .header-title { display: flex; flex-direction: column; gap: 1px; }
+    .header-dates { font-size: 0.72rem; color: var(--muted-2); font-weight: 700; letter-spacing: 0.04em; }
+
+    .site-footer {
+      text-align: center; padding: 1.5rem var(--px);
+      font-size: 0.72rem; color: var(--muted-3);
+      font-weight: 700; border-top: 1px solid var(--line);
+    }
+
+    /* ── Layout ── */
+    .cert-page {
+      position: relative; z-index: 1;
+      width: min(100%, 680px); margin: 0 auto;
+      padding: 28px var(--px) 96px;
+    }
+
+    .cert-panel {
+      border-radius: var(--r-2xl); border: 1px solid var(--line-med);
+      background: linear-gradient(158deg,
+        rgba(255,255,255,0.042) 0%, rgba(255,255,255,0.010) 60%, rgba(255,138,31,0.018) 100%);
+      box-shadow: var(--shadow-m), 0 0 56px rgba(255,138,31,0.04);
+      overflow: hidden;
+    }
+    .cert-panel-topbar {
+      height: 2.5px;
+      background: linear-gradient(to right, var(--orange) 0%, var(--amber) 45%, transparent 100%);
+    }
+    .cert-panel-body { padding: 2.5rem 2.5rem 2rem; }
+
+    .cert-panel-head {
+      text-align: center; margin-bottom: 2.5rem;
+      padding-bottom: 2rem; border-bottom: 1px solid var(--line);
+    }
+    .cert-panel-head img {
+      height: 56px; width: auto; margin: 0 auto 1.5rem; display: block;
+      filter: drop-shadow(0 4px 20px rgba(255,138,31,0.28));
+    }
+    .cert-head-kicker {
+      font-size: 0.60rem; font-weight: 900;
+      text-transform: uppercase; letter-spacing: 0.22em;
+      color: var(--amber); margin-bottom: 0.6rem;
+    }
+    .cert-head-title {
+      font-size: 2rem; font-weight: 900;
+      letter-spacing: -0.045em; line-height: 1;
+      color: var(--text); margin-bottom: 0.4rem;
+    }
+    .cert-head-sub {
+      font-size: 0.70rem; font-weight: 900; color: var(--muted-2);
+      text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 0.9rem;
+    }
+    .cert-brand-secondary { display: flex; justify-content: center; margin-top: 0.9rem; }
+    .cert-brand-secondary span {
+      font-size: 0.60rem; font-weight: 700;
+      color: var(--muted-3); letter-spacing: 0.06em; opacity: 0.7;
+    }
+
+    .cert-section-label {
+      font-size: 0.58rem; font-weight: 900;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: rgba(255,255,255,0.30);
+      display: flex; align-items: center; gap: 8px; margin: 0 0 12px;
+    }
+    .cert-section-label::after {
+      content: ''; flex: 1; height: 1px;
+      background: linear-gradient(to right, var(--line-med), transparent);
+    }
+
+    /* ── Formulário ── */
+    .validation-form { display: flex; flex-direction: column; gap: 1.25rem; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group label {
+      font-size: 0.63rem; font-weight: 900;
+      text-transform: uppercase; letter-spacing: 0.10em; color: var(--muted-2);
+    }
+    .form-group input {
+      min-height: 54px; padding: 0 20px;
+      border-radius: var(--r-l); border: 1px solid var(--line-med);
+      background: rgba(255,255,255,0.032); color: var(--text);
+      font-size: 1.08rem; font-weight: 800; font-family: 'Courier New', monospace;
+      outline: none; text-transform: uppercase; letter-spacing: 0.14em;
+      transition: border-color 0.13s, box-shadow 0.13s, background 0.13s;
+      text-align: center;
+    }
+    .form-group input::placeholder {
+      color: var(--muted-3); font-weight: 600;
+      text-transform: none; letter-spacing: 0.04em;
+      font-family: inherit; font-size: 0.9rem;
+    }
+    .form-group input:focus {
+      border-color: var(--orange-dim); background: var(--orange-soft2);
+      box-shadow: 0 0 0 3px rgba(255,138,31,0.09);
+    }
+    .form-hint {
+      font-size: 0.66rem; color: var(--muted-3);
+      font-weight: 700; margin-top: 2px;
+      letter-spacing: 0.02em; text-align: center;
+    }
+
+    .btn-axis {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      min-height: 50px; padding: 0 28px;
+      border-radius: var(--r-l); border: none;
+      background: var(--orange); color: #0b0d12;
+      font-size: 0.90rem; font-weight: 900; letter-spacing: 0.02em;
+      cursor: pointer; width: 100%;
+      transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
+      font-family: inherit;
+    }
+    .btn-axis:hover:not(:disabled) {
+      background: var(--amber); transform: translateY(-1px);
+      box-shadow: 0 8px 32px rgba(255,138,31,0.30);
+    }
+    .btn-axis:active:not(:disabled) { transform: translateY(0); }
+    .btn-axis:disabled { opacity: 0.42; cursor: not-allowed; transform: none; }
+
+    .btn-ghost {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      min-height: 42px; padding: 0 18px;
+      border-radius: var(--r-l); border: 1px solid var(--line-med);
+      background: var(--surface-3); color: var(--text-2);
+      font-size: 0.83rem; font-weight: 900; cursor: pointer;
+      transition: background 0.13s, border-color 0.13s, color 0.13s;
+      text-decoration: none; font-family: inherit;
+    }
+    .btn-ghost:hover { background: var(--surface-2); border-color: var(--orange-line); color: var(--amber); }
+
+    .loading-spinner {
+      display: inline-block; width: 16px; height: 16px;
+      border: 2px solid #0b0d12; border-radius: 50%;
+      border-top-color: transparent; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .message {
+      padding: 12px 16px; border-radius: var(--r-m);
+      font-size: 0.86rem; font-weight: 800; margin: 14px 0 0;
+      animation: slideIn 0.22s ease; display: none; line-height: 1.5;
+    }
+    .message--success { background: var(--teal-soft);      color: var(--teal-text); border: 1px solid var(--teal-line); }
+    .message--error   { background: rgba(255,92,110,0.10); color: #ff5c6e;          border: 1px solid rgba(255,92,110,0.28); }
+    .message--info    { background: var(--orange-soft2);   color: var(--amber);     border: 1px solid var(--orange-line); }
+
+    /* ── Resultado da validação ── */
+    .validation-result {
+      margin-top: 2rem; border-radius: var(--r-xl);
+      overflow: hidden; display: none; animation: slideIn 0.35s ease;
+    }
+    .validation-result.show { display: block; }
+    .validation-result--valid     { border: 1px solid rgba(74,222,180,0.25); }
+    .validation-result--invalid   { border: 1px solid rgba(255,92,110,0.25); }
+    .validation-result--not-found { border: 1px solid rgba(255,138,31,0.22); }
+
+    .val-result-bar { height: 3px; }
+    .validation-result--valid     .val-result-bar { background: linear-gradient(to right, var(--teal-text), transparent); }
+    .validation-result--invalid   .val-result-bar { background: linear-gradient(to right, #ff5c6e, transparent); }
+    .validation-result--not-found .val-result-bar { background: linear-gradient(to right, var(--orange), transparent); }
+
+    .val-result-inner { padding: 1.75rem clamp(1.25rem, 4vw, 1.75rem); }
+
+    .val-status-block {
+      display: flex; align-items: center; gap: 16px;
+      padding: 1.2rem 1.5rem; border-radius: 14px; margin-bottom: 1.6rem;
+    }
+    .validation-result--valid     .val-status-block { background: rgba(74,222,180,0.08); border: 1px solid rgba(74,222,180,0.14); }
+    .validation-result--invalid   .val-status-block { background: rgba(255,92,110,0.08); border: 1px solid rgba(255,92,110,0.14); }
+    .validation-result--not-found .val-status-block { background: rgba(255,138,31,0.07); border: 1px solid rgba(255,138,31,0.14); }
+
+    .val-status-icon {
+      width: 44px; height: 44px; flex-shrink: 0;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    }
+    .validation-result--valid     .val-status-icon { background: rgba(74,222,180,0.15); }
+    .validation-result--invalid   .val-status-icon { background: rgba(255,92,110,0.15); }
+    .validation-result--not-found .val-status-icon { background: rgba(255,138,31,0.15); }
+    .val-status-icon svg { display: block; }
+
+    .val-status-title {
+      font-size: 1.15rem; font-weight: 900; letter-spacing: -0.025em;
+      line-height: 1.1; margin-bottom: 4px;
+    }
+    .validation-result--valid     .val-status-title { color: var(--teal-text); }
+    .validation-result--invalid   .val-status-title { color: #ff5c6e; }
+    .validation-result--not-found .val-status-title { color: var(--amber); }
+
+    .val-status-msg { font-size: 0.80rem; font-weight: 700; color: var(--muted); line-height: 1.5; }
+
+    /* Dados do certificado */
+    .cert-data { display: flex; flex-direction: column; gap: 0; }
+
+    .cert-data-header {
+      font-size: 0.57rem; font-weight: 900;
+      text-transform: uppercase; letter-spacing: 0.16em;
+      color: rgba(255,255,255,0.28);
+      display: flex; align-items: center; gap: 8px; margin-bottom: 14px;
+    }
+    .cert-data-header::after {
+      content: ''; flex: 1; height: 1px;
+      background: linear-gradient(to right, var(--line-med), transparent);
+    }
+
+    .cert-participant-row {
+      display: flex; flex-direction: column; gap: 4px;
+      padding: 1rem 1.1rem; border-radius: 12px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--line-med); margin-bottom: 12px;
+    }
+    .cert-participant-label {
+      font-size: 0.58rem; font-weight: 900;
+      text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted-3);
+    }
+    .cert-participant-name {
+      font-size: clamp(1.3rem, 3.5vw, 1.75rem);
+      font-weight: 900; letter-spacing: -0.03em;
+      color: var(--text); word-break: break-word; line-height: 1.15;
+    }
+    .cert-participant-name::after {
+      content: ''; display: block; width: 48px; height: 2px;
+      background: linear-gradient(90deg, var(--orange), var(--amber));
+      margin-top: 6px; border-radius: 2px;
+    }
+
+    .cert-meta-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 8px; margin-bottom: 12px;
+    }
+    .cert-meta-cell {
+      background: rgba(255,255,255,0.022); border: 1px solid var(--line);
+      border-radius: 10px; padding: 0.7rem 0.9rem;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .cert-meta-cell--wide { grid-column: span 2; }
+    .cert-meta-label {
+      font-size: 0.57rem; font-weight: 900;
+      text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted-3);
+    }
+    .cert-meta-value { font-size: 0.87rem; font-weight: 800; color: var(--text-2); line-height: 1.3; }
+
+    .cert-code-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 0.9rem 1.1rem; border-radius: 10px;
+      background: rgba(12,14,28,0.55); border: 1px solid rgba(255,179,71,0.15);
+    }
+    .cert-code-label {
+      font-size: 0.57rem; font-weight: 900;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: rgba(255,255,255,0.38); flex-shrink: 0;
+    }
+    .cert-code-value {
+      font-family: 'Courier New', monospace;
+      font-size: 0.90rem; font-weight: 700;
+      color: var(--amber); letter-spacing: 0.10em; text-align: right;
+    }
+
+    .cert-issue-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 10px; border-radius: 999px;
+      background: rgba(255,138,31,0.10);
+      border: 1px solid rgba(255,138,31,0.20);
+      color: var(--amber); font-size: 0.64rem; font-weight: 900;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      margin-top: 10px; align-self: flex-start;
+    }
+
+    /* Navegação */
+    .cert-nav-links {
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 8px;
+      margin-top: 2rem; padding-top: 1.5rem;
+      border-top: 1px solid var(--line);
+    }
+    .cert-nav-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--muted); text-decoration: none;
+      font-size: 0.75rem; font-weight: 900; letter-spacing: 0.03em;
+      transition: color 0.12s;
+    }
+    .cert-nav-link:hover { color: var(--amber); }
+    .cert-nav-url { cursor: default; pointer-events: none; font-size: .62rem; letter-spacing: .06em; color: var(--muted-3); }
+
+    /* Animações */
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 480px) {
+      .cert-panel-body { padding: 1.5rem 1.25rem; }
+      .cert-head-title { font-size: 1.55rem; }
+      .cert-meta-grid { grid-template-columns: 1fr; }
+      .cert-meta-cell--wide { grid-column: span 1; }
+      .cert-code-row { flex-direction: column; align-items: flex-start; }
+      .cert-code-value { text-align: left; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <a class="header-brand" href="certificados.html" aria-label="Go to certificate issuance">
+      <img src="../assets/axis-mark-placeholder.svg" alt="AXIS" class="header-logo"/>
+    </a>
+    <div class="header-title">
+      <p class="header-dates" style="font-size:.78rem;letter-spacing:.06em;font-weight:900;color:var(--text);margin:0">Validação</p>
+      <p class="header-dates">10 e 11 de março · 2026</p>
+    </div>
+  </header>
+
+  <main class="cert-page">
+    <div class="cert-panel">
+      <div class="cert-panel-topbar"></div>
+      <div class="cert-panel-body">
+
+        <div class="cert-panel-head">
+          <img src="../assets/axis-mark-placeholder.svg" alt="AXIS Summit"/>
+          <p class="cert-head-kicker">AXIS Summit 2026 — A Cultura Vira o Jogo!</p>
+          <h1 class="cert-head-title">Validação</h1>
+          <p class="cert-head-sub">Verificar autenticidade do certificado</p>
+          <div class="cert-brand-secondary">
+            <span>Gudi · Secretaria da Cultura · Governo do Estado do RS</span>
+          </div>
+        </div>
+
+        <form class="validation-form" id="validationForm" novalidate>
+          <div><p class="cert-section-label">Código do certificado</p></div>
+          <div class="form-group">
+            <label for="validationCode">Código de validação</label>
+            <input type="text" id="validationCode" name="validationCode"
+              placeholder="AXIS-XXXXXXX-XXX"
+              autocomplete="off" spellcheck="false" required/>
+            <span class="form-hint">Digite o código exibido no seu certificado emitido.</span>
+          </div>
+          <button type="submit" class="btn-axis" id="validateBtn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <span id="validateBtnText">Validar Certificado</span>
+            <div class="loading-spinner" id="validateBtnSpinner" style="display:none;"></div>
+          </button>
+        </form>
+
+        <div id="resultMessage" class="message" role="alert" aria-live="polite"></div>
+        <div id="validationResult" class="validation-result" aria-live="polite"></div>
+
+        <div class="cert-nav-links">
+          <a href="certificados.html" class="cert-nav-link">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+            Emitir certificado
+          </a>
+          <span class="cert-nav-url">portfolio.example/certificates</span>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <p>
+      <strong>AXIS Summit</strong> — A Cultura Vira o Jogo! &nbsp;·&nbsp;
+      &copy; <span id="year"></span>
+      <span style="opacity:.50"> &nbsp;·&nbsp; Gudi · Secretaria da Cultura · Governo do Estado do RS</span>
+    </p>
+  </footer>
+
+  <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="certificados-v3.js?v=20260318-multi-cert"></script>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const ICON_VALID    = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4adeb4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
+      const ICON_INVALID  = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ff5c6e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+      const ICON_NOTFOUND = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffb347" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>`;
+
+      function showMessage(msg, type) {
+        const el = document.getElementById('resultMessage');
+        if (!el) return;
+        el.textContent = msg; el.className = 'message message--' + (type || 'info');
+        el.style.display = 'block';
+        if (type === 'success') setTimeout(() => { el.style.display = 'none'; }, 10000);
+      }
+      function hideMessage() { const el = document.getElementById('resultMessage'); if (el) el.style.display = 'none'; }
+      function setLoading(loading) {
+        const btn = document.getElementById('validateBtn');
+        const text = document.getElementById('validateBtnText');
+        const spinner = document.getElementById('validateBtnSpinner');
+        if (!btn) return;
+        btn.disabled = loading;
+        if (text)    text.textContent      = loading ? 'Validando...' : 'Validar Certificado';
+        if (spinner) spinner.style.display = loading ? 'inline-block' : 'none';
+      }
+      function formatCode(v) { return _normalizeValidationCode(v); }
+      function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+      function fmtDate(iso) {
+        if (!iso) return '—';
+        try { return new Date(iso).toLocaleDateString('pt-BR', { day:'2-digit', month:'long', year:'numeric' }); }
+        catch (_) { return iso; }
+      }
+
+      function normalizeCertificateType(type) {
+        const raw = String(type || '').trim().toLowerCase();
+        if (!raw) return 'publico_geral';
+        if (raw === 'participant' || raw === 'public' || raw === 'publico' || raw === 'publico_geral') return 'publico_geral';
+        return raw;
+      }
+
+      function renderSuccess(response) {
+        const cert = response.certificate;
+        const isValid = response.valid;
+        const resultDiv = document.getElementById('validationResult');
+        if (!resultDiv) return;
+        const certificateType = normalizeCertificateType(cert.certificateType || 'publico_geral');
+        const typeLabel = certificateType === 'rodada_negocios'
+          ? String(cert.specialLabel || 'Rodada de Negócios')
+          : certificateType === 'atelie'
+            ? String(cert.specialLabel || 'Ateliê')
+            : certificateType === 'speaker'
+              ? 'Palestrante'
+              : 'Público Geral';
+        const projectName = certificateType === 'rodada_negocios'
+          ? String(cert.projectName || '').trim()
+          : '';
+
+        const stateClass = isValid ? 'validation-result--valid' : 'validation-result--invalid';
+        const icon  = isValid ? ICON_VALID : ICON_INVALID;
+        const title = isValid ? 'Certificado Válido' : 'Certificado Inativo';
+        const msg   = isValid
+          ? 'Este certificado é autêntico e foi emitido pelo AXIS Summit 2026.'
+          : 'Este certificado não está ativo ou foi revogado.';
+
+        const diasLabel = (cert.diasLabel && /março/i.test(cert.diasLabel))
+          ? cert.diasLabel : '10 e 11 de março de 2026';
+
+        const reemisoesHTML = cert.issueCount > 1
+          ? `<div class="cert-issue-badge">
+               <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg>
+               ${esc(cert.issueCount)} emissões
+             </div>` : '';
+
+        resultDiv.className = `validation-result show ${stateClass}`;
+        resultDiv.innerHTML = `
+          <div class="val-result-bar"></div>
+          <div class="val-result-inner">
+            <div class="val-status-block">
+              <div class="val-status-icon">${icon}</div>
+              <div>
+                <div class="val-status-title">${title}</div>
+                <div class="val-status-msg">${esc(msg)}</div>
+              </div>
+            </div>
+            <div class="cert-data">
+              <div class="cert-data-header">Dados do certificado</div>
+              <div class="cert-participant-row">
+                <span class="cert-participant-label">Participante</span>
+                <span class="cert-participant-name">${esc(cert.participantName)}</span>
+              </div>
+              <div class="cert-meta-grid">
+                <div class="cert-meta-cell">
+                  <span class="cert-meta-label">Evento</span>
+                  <span class="cert-meta-value">${esc(cert.eventName || 'AXIS Summit')} 2026</span>
+                </div>
+                <div class="cert-meta-cell">
+                  <span class="cert-meta-label">Emitido em</span>
+                  <span class="cert-meta-value">${fmtDate(cert.issuedAt)}</span>
+                </div>
+                <div class="cert-meta-cell">
+                  <span class="cert-meta-label">Período</span>
+                  <span class="cert-meta-value">${esc(diasLabel)}</span>
+                </div>
+                <div class="cert-meta-cell">
+                  <span class="cert-meta-label">Tipo</span>
+                  <span class="cert-meta-value">${esc(typeLabel)}</span>
+                </div>
+              </div>
+              ${projectName ? `
+                <div class="cert-code-row">
+                  <span class="cert-code-label">Projeto</span>
+                  <span class="cert-code-value">${esc(projectName)}</span>
+                </div>` : ''}
+              <div class="cert-code-row">
+                <span class="cert-code-label">Código de validação</span>
+                <span class="cert-code-value">${esc(cert.validationCode)}</span>
+              </div>
+              ${reemisoesHTML}
+            </div>
+          </div>
+        `;
+        /* SEC-1: CPF e e-mail intencionalmente ausentes desta renderização */
+      }
+
+      function renderError(response) {
+        const msgs = {
+          VALIDATION_CODE_NOT_FOUND: 'Código não encontrado. Verifique se foi digitado corretamente.',
+          MISSING_VALIDATION_CODE:   'Informe o código de validação.',
+          CERTIFICATE_NOT_FOUND:     'Certificado não encontrado na base.',
+          RATE_LIMITED:              'Muitas tentativas. Aguarde um momento e tente novamente.'
+        };
+        const msg = msgs[response.code] || response.error || 'Código de validação inválido.';
+        const resultDiv = document.getElementById('validationResult');
+        if (!resultDiv) return;
+        resultDiv.className = 'validation-result show validation-result--not-found';
+        resultDiv.innerHTML = `
+          <div class="val-result-bar"></div>
+          <div class="val-result-inner">
+            <div class="val-status-block">
+              <div class="val-status-icon">${ICON_NOTFOUND}</div>
+              <div>
+                <div class="val-status-title">Não Encontrado</div>
+                <div class="val-status-msg">${esc(msg)}</div>
+              </div>
+            </div>
+          </div>
+        `;
+        showMessage(msg, 'error');
+      }
+
+      async function validate() {
+        const raw  = document.getElementById('validationCode')?.value || '';
+        const code = formatCode(raw);
+        hideMessage();
+        const resultDiv = document.getElementById('validationResult');
+        if (resultDiv) { resultDiv.className = 'validation-result'; resultDiv.innerHTML = ''; }
+        if (!code) { showMessage('Digite o código de validação.', 'error'); return; }
+        if (!_isValidationCodeFormat(code)) {
+          showMessage('Formato inválido. Use o padrão AXIS-XXXXXXX-XXX.', 'error'); return;
+        }
+        setLoading(true);
+        try {
+          const api      = new AxisCertificatesAPI();
+          const response = await api.validarCertificado(code);
+          if (response && response.ok) {
+            renderSuccess(response);
+            if (response.valid) showMessage('Certificado verificado com sucesso. ✓', 'success');
+          } else {
+            renderError(response || {});
+          }
+        } catch (err) {
+          showMessage(err.message || 'Erro ao conectar com o servidor. Tente novamente.', 'error');
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      document.addEventListener('DOMContentLoaded', function () {
+        const form  = document.getElementById('validationForm');
+        const input = document.getElementById('validationCode');
+        if (form)  form.addEventListener('submit', function (e) { e.preventDefault(); validate(); });
+        if (input) {
+          input.addEventListener('input', function (e) {
+            const pos = e.target.selectionStart;
+            e.target.value = formatCode(e.target.value);
+            try { e.target.setSelectionRange(pos, pos); } catch (_) {}
+          });
+          input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); validate(); }
+          });
+        }
+        const params    = new URLSearchParams(window.location.search);
+        const codeParam = params.get('code');
+        if (codeParam && input) {
+          input.value = formatCode(codeParam);
+          if (_isValidationCodeFormat(input.value)) {
+            setTimeout(validate, 500);
+          } else {
+            showMessage('O código informado na URL não está no formato esperado.', 'error');
+          }
+        }
+      });
+    }());
+  </script>
+</body>
+</html>
+

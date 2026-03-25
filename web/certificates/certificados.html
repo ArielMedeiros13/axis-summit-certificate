@@ -1,0 +1,801 @@
+<!doctype html>
+<!--
+  Module: Public certificate issuance page.
+  What it does: Collects participant identity fields, negotiates issuance with the backend, previews the generated certificate, and lets the user export the final PDF.
+  Key design decisions: Keeps security-sensitive validation on the server, handles ambiguous identities with step-up confirmation, and uses a browser-rendered preview so the exported PDF matches the on-screen certificate.
+  System connections: Loads `certificados-v3.js`, calls `apps-script/axis-certificados.gs`, and links directly to `certificados-validator-v3.html`.
+-->
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <title>Certificados — AXIS Summit 2026</title>
+
+  <link rel="icon" href="../assets/axis-mark-placeholder.svg" type="image/svg+xml"/>
+  <link rel="apple-touch-icon" href="../assets/axis-mark-placeholder.svg"/>
+  <meta name="theme-color" content="#0b0d12"/>
+
+  <!-- CSS do site — progressive enhancement; página funciona sem ele -->
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
+  <!-- html2canvas: captura o preview para gerar PDF fiel ao que aparece na tela -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+  <link rel="preload" as="image" href="../assets/logos-strip-placeholder.svg"/>
+  <script>window.AXIS_LOGOS_BAR_URL = '../assets/logos-strip-placeholder.svg';</script>
+
+  <style>
+    /* ═══════════════════════════════════════════════════════════════
+       CERTIFICADOS — AXIS Summit 2026  |  CSS AUTOSSUFICIENTE v6
+       Todo CSS crítico está aqui inline.
+       Tokens de styles-programacao.css são usados quando disponíveis;
+       fallbacks hardcoded garantem aparência correta sem ele.
+    ═══════════════════════════════════════════════════════════════ */
+
+    /* ── Fallbacks de tokens ── */
+    :root {
+      --orange:       #ff8a1f;
+      --orange-dim:   #e07018;
+      --orange-soft:  rgba(255,138,31,0.10);
+      --orange-soft2: rgba(255,138,31,0.06);
+      --orange-line:  rgba(255,138,31,0.28);
+      --amber:        #ffb347;
+      --amber-warm:   #ffc96e;
+      --text:         #f8f4ec;
+      --text-2:       #d8d0c4;
+      --muted:        rgba(248,244,236,0.62);
+      --muted-2:      rgba(248,244,236,0.48);
+      --muted-3:      rgba(248,244,236,0.32);
+      --line:         rgba(255,255,255,0.08);
+      --line-med:     rgba(255,255,255,0.12);
+      --surface-2:    rgba(255,255,255,0.07);
+      --surface-3:    rgba(255,255,255,0.04);
+      --teal-soft:    rgba(74,222,180,0.10);
+      --teal-text:    #4adeb4;
+      --teal-line:    rgba(74,222,180,0.22);
+      --r-l:          10px;
+      --r-m:          8px;
+      --r-2xl:        24px;
+      --shadow-m:     0 8px 32px rgba(0,0,0,0.28);
+      --px:           1.25rem;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Nunito', system-ui, -apple-system, sans-serif;
+      background: #0b0d12;
+      color: var(--text);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Estrutura do site — fallbacks caso styles-programacao não carregue ── */
+    .bg-glow {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(255,138,31,0.07), transparent);
+    }
+    .site-header {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; gap: 1rem;
+      padding: 0.75rem var(--px);
+      background: rgba(11,13,18,0.88);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line);
+    }
+    .header-brand { display: flex; align-items: center; text-decoration: none; }
+    .header-logo  { height: 32px; width: auto; display: block; }
+    .header-title { display: flex; flex-direction: column; gap: 1px; }
+    .header-dates { font-size: 0.72rem; color: var(--muted-2); font-weight: 700; letter-spacing: 0.04em; }
+
+    .site-footer {
+      text-align: center; padding: 1.5rem var(--px);
+      font-size: 0.72rem; color: var(--muted-3);
+      font-weight: 700; border-top: 1px solid var(--line);
+    }
+
+    /* ══════════════════════════════════════════════════
+       LAYOUT DA PÁGINA
+    ══════════════════════════════════════════════════ */
+    .cert-page {
+      position: relative; z-index: 1;
+      width: min(100%, 680px);
+      margin: 0 auto;
+      padding: 28px var(--px) 96px;
+    }
+
+    .cert-panel {
+      border-radius: var(--r-2xl);
+      border: 1px solid var(--line-med);
+      background: linear-gradient(158deg,
+        rgba(255,255,255,0.042) 0%,
+        rgba(255,255,255,0.010) 60%,
+        rgba(255,138,31,0.018) 100%);
+      box-shadow: var(--shadow-m), 0 0 56px rgba(255,138,31,0.04);
+      overflow: hidden;
+    }
+
+    .cert-panel-topbar {
+      height: 2.5px;
+      background: linear-gradient(to right, var(--orange) 0%, var(--amber) 45%, transparent 100%);
+    }
+
+    .cert-panel-body { padding: 2.5rem 2.5rem 2rem; }
+
+    .cert-panel-head {
+      text-align: center;
+      margin-bottom: 2.5rem; padding-bottom: 2rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .cert-panel-head img {
+      height: 56px; width: auto;
+      margin: 0 auto 1.5rem; display: block;
+      filter: drop-shadow(0 4px 20px rgba(255,138,31,0.28));
+    }
+    .cert-head-kicker {
+      font-size: 0.60rem; font-weight: 900;
+      text-transform: uppercase; letter-spacing: 0.22em;
+      color: var(--amber); margin-bottom: 0.6rem;
+    }
+    .cert-head-title {
+      font-size: 2rem; font-weight: 900;
+      letter-spacing: -0.045em; line-height: 1;
+      color: var(--text); margin-bottom: 0.4rem;
+    }
+    .cert-head-sub {
+      font-size: 0.70rem; font-weight: 900;
+      color: var(--muted-2); text-transform: uppercase;
+      letter-spacing: 0.09em; margin-bottom: 1rem;
+    }
+    .cert-brand-secondary { display: flex; justify-content: center; margin-top: 1rem; }
+    .cert-brand-secondary span {
+      font-size: 0.60rem; font-weight: 700;
+      color: var(--muted-3); letter-spacing: 0.06em; opacity: 0.7;
+    }
+
+    .cert-section-label {
+      font-size: 0.58rem; font-weight: 900;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: rgba(255,255,255,0.30);
+      display: flex; align-items: center; gap: 8px; margin: 0 0 12px;
+    }
+    .cert-section-label::after {
+      content: ''; flex: 1; height: 1px;
+      background: linear-gradient(to right, var(--line-med), transparent);
+    }
+
+    /* ══════════════════════════════════════════════════
+       FORMULÁRIO
+    ══════════════════════════════════════════════════ */
+    .cert-form { display: flex; flex-direction: column; gap: 1.25rem; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group label {
+      font-size: 0.63rem; font-weight: 900;
+      text-transform: uppercase; letter-spacing: 0.10em; color: var(--muted-2);
+    }
+    .form-group input {
+      min-height: 46px; padding: 0 16px;
+      border-radius: var(--r-l); border: 1px solid var(--line-med);
+      background: rgba(255,255,255,0.032); color: var(--text);
+      font-size: 0.92rem; font-weight: 800; outline: none;
+      transition: border-color 0.13s, box-shadow 0.13s, background 0.13s;
+      font-family: inherit;
+    }
+    .form-group input::placeholder { color: var(--muted-3); font-weight: 700; }
+    .form-group input:focus {
+      border-color: var(--orange-dim); background: var(--orange-soft2);
+      box-shadow: 0 0 0 3px rgba(255,138,31,0.09);
+    }
+    .form-hint {
+      font-size: 0.66rem; color: var(--muted-3);
+      font-weight: 700; margin-top: 2px; letter-spacing: 0.02em;
+    }
+
+    .checkbox-group { display: flex; flex-direction: column; gap: 7px; }
+    .checkbox-label {
+      display: flex; align-items: center; gap: 11px;
+      min-height: 44px; padding: 0 16px;
+      border-radius: var(--r-l); border: 1px solid var(--line-med);
+      background: rgba(255,255,255,0.022); color: var(--muted);
+      font-size: 0.87rem; font-weight: 800;
+      cursor: pointer; user-select: none;
+      transition: background 0.13s, border-color 0.13s, color 0.13s;
+    }
+    .checkbox-label:hover { background: rgba(255,255,255,0.04); color: var(--text-2); }
+    .checkbox-label input[type="checkbox"] { display: none; }
+    .checkmark {
+      width: 18px; height: 18px;
+      border: 1.5px solid var(--line-med); border-radius: 4px;
+      flex-shrink: 0; position: relative; transition: all 0.13s;
+    }
+    .checkbox-label input:checked + .checkmark { background: var(--orange); border-color: var(--orange); }
+    .checkbox-label input:checked + .checkmark::after {
+      content: '';
+      position: absolute; top: 2px; left: 5px;
+      width: 5px; height: 9px;
+      border: solid #0b0d12; border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+    .checkbox-label:has(input:checked) {
+      background: var(--orange-soft); border-color: var(--orange-line); color: var(--amber-warm);
+    }
+    .checkbox-label-day {
+      font-size: 0.70rem; font-weight: 900;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--muted-2); margin-left: auto;
+    }
+    .checkbox-label:has(input:checked) .checkbox-label-day { color: var(--amber); }
+
+    .btn-axis {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      min-height: 50px; padding: 0 28px;
+      border-radius: var(--r-l); border: none;
+      background: var(--orange); color: #0b0d12;
+      font-size: 0.90rem; font-weight: 900; letter-spacing: 0.02em;
+      cursor: pointer; width: 100%;
+      transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
+      font-family: inherit;
+    }
+    .btn-axis:hover:not(:disabled) {
+      background: var(--amber); transform: translateY(-1px);
+      box-shadow: 0 8px 32px rgba(255,138,31,0.30);
+    }
+    .btn-axis:active:not(:disabled) { transform: translateY(0); }
+    .btn-axis:disabled { opacity: 0.42; cursor: not-allowed; transform: none; }
+
+    .btn-ghost {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      min-height: 42px; padding: 0 18px;
+      border-radius: var(--r-l); border: 1px solid var(--line-med);
+      background: var(--surface-3); color: var(--text-2);
+      font-size: 0.83rem; font-weight: 900; cursor: pointer; flex: 1;
+      transition: background 0.13s, border-color 0.13s, color 0.13s;
+      font-family: inherit;
+    }
+    .btn-ghost:hover:not(:disabled) {
+      background: var(--surface-2); border-color: var(--orange-line); color: var(--amber);
+    }
+
+    .loading-spinner {
+      display: inline-block; width: 16px; height: 16px;
+      border: 2px solid #0b0d12; border-radius: 50%;
+      border-top-color: transparent; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .message {
+      padding: 12px 16px; border-radius: var(--r-m);
+      font-size: 0.86rem; font-weight: 800;
+      margin: 14px 0 0; display: none; line-height: 1.5;
+      animation: slideIn 0.22s ease;
+    }
+    .message--success { background: var(--teal-soft);      color: var(--teal-text); border: 1px solid var(--teal-line); }
+    .message--error   { background: rgba(255,92,110,0.10); color: #ff5c6e;          border: 1px solid rgba(255,92,110,0.28); }
+    .message--info    { background: var(--orange-soft2);   color: var(--amber);     border: 1px solid var(--orange-line); }
+
+    .cert-result { margin-top: 2.5rem; display: none; }
+    .cert-result.show { display: block; animation: slideIn 0.42s ease; }
+    .cert-result-bar { display: none; }
+    .cert-result-inner { padding: 0; }
+
+    .cert-actions { display: flex; gap: 8px; margin-top: 1.4rem; flex-wrap: wrap; }
+
+    .cert-validate-note {
+      text-align: center; margin-top: 1.75rem; padding-top: 1.5rem;
+      border-top: 1px solid var(--line);
+      font-size: 0.67rem; color: var(--muted-3);
+      font-weight: 700; letter-spacing: 0.03em; line-height: 1.55;
+    }
+    .cert-validate-note a { color: var(--amber); text-decoration: none; font-weight: 900; }
+    .cert-validate-note a:hover { text-decoration: underline; }
+
+    /* ══════════════════════════════════════════════════
+       POSTER DO CERTIFICADO (preview na tela)
+    ══════════════════════════════════════════════════ */
+    .cert-poster {
+      position: relative;
+      border-radius: clamp(20px, 3.5vw, 32px);
+      padding: clamp(1.4rem, 3.8vw, 2.6rem);
+      /* padding-bottom:0 — a logos-bar cancela o padding com margem negativa */
+      padding-bottom: 0;
+      background: #060910; color: #fefbf2;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 36px 80px rgba(3,5,12,0.55);
+      isolation: isolate;
+    }
+
+    /* Classe aplicada durante captura html2canvas — fixa dimensões para output consistente */
+    .cert-poster--capturing {
+      width: 620px !important;
+      border-radius: 28px !important;
+      padding: 2.2rem !important;
+      padding-bottom: 0 !important;
+      box-shadow: none !important;
+      /* MANTÉM overflow:visible para capturar logos-bar com margem negativa */
+      overflow: visible !important;
+    }
+    .cert-poster--capturing .cert-poster__logos-bar {
+      /* Remove margens negativas durante captura — a barra já estará dentro do bounding box */
+      margin: 1rem 0 0 !important;
+      border-radius: 0 0 28px 28px !important;
+    }
+
+    /* Gradiente de fundo — somente o verde-limão suave, sem a elipse laranja */
+    .cert-poster::before {
+      content: '';
+      position: absolute; z-index: -1; pointer-events: none;
+      inset: -20% 35% 10% -8%;
+      background: linear-gradient(128deg, rgba(198,236,45,0.45), rgba(198,236,45,0.02));
+      transform: skewX(-16deg);
+    }
+    /* ::after ELIMINADO — era a elipse laranja */
+
+    .cert-poster__vertical {
+      position: absolute;
+      inset: clamp(1rem,2vw,1.5rem) auto clamp(1rem,3.5vw,1.8rem) clamp(0.9rem,2.5vw,1.8rem);
+      writing-mode: vertical-rl;
+      text-transform: uppercase; letter-spacing: 0.34em;
+      font-weight: 900; font-size: 0.60rem;
+      color: rgba(255,255,255,0.35);
+    }
+
+    /* Grid: conteúdo principal | coluna auth compacta */
+    .cert-poster__layout {
+      position: relative; z-index: 1;
+      display: grid;
+      grid-template-columns: 1fr 192px;
+      gap: clamp(1.1rem, 2.5vw, 2rem);
+      align-items: start;
+    }
+    @media (max-width: 640px) {
+      .cert-poster__layout { grid-template-columns: 1fr; }
+    }
+
+    /* Painel de papel */
+    .cert-poster__main {
+      position: relative;
+      background: #f6f0e4; color: #1b140c;
+      border-radius: 20px 36px 18px 18px;
+      padding: clamp(1.1rem, 2.4vw, 2rem);
+      box-shadow: inset 0 0 0 2px rgba(15,10,6,0.06), 0 24px 52px rgba(10,7,5,0.16);
+      clip-path: polygon(0% 0%, 88% 0%, 100% 15%, 100% 100%, 0% 100%);
+    }
+    /* Pequeno acento laranja no canto dobrado — controlado */
+    .cert-poster__main::after {
+      content: '';
+      position: absolute; top: -10px; right: 18px;
+      width: 76px; height: 30px;
+      background: linear-gradient(90deg, #ff732f, #ffb347);
+      transform: skewX(-10deg); opacity: 0.40;
+      border-radius: 6px; pointer-events: none;
+    }
+
+    .cert-poster__header {
+      display: flex; justify-content: space-between;
+      align-items: flex-start; flex-wrap: wrap;
+      gap: 0.55rem; margin-bottom: 1rem;
+    }
+    .cert-poster__axis { font-size: 0.98rem; line-height: 1.2; font-weight: 900; letter-spacing: -0.01em; }
+    .cert-poster__axis span {
+      display: block; font-size: 0.66rem;
+      text-transform: uppercase; letter-spacing: 0.26em;
+      color: #6d5af2; font-weight: 900;
+    }
+    .cert-poster__badge-wrap { display: flex; align-items: center; }
+    .cert-poster__badge {
+      display: inline-flex; padding: 0.22rem 0.75rem;
+      background: #141113; color: #d0ff4f;
+      font-size: 0.62rem; font-weight: 900;
+      letter-spacing: 0.15em; text-transform: uppercase;
+      border-radius: 999px;
+    }
+
+    .cert-poster__intro {
+      font-size: 0.80rem; font-style: italic;
+      letter-spacing: 0.04em; color: #5a4638; margin-bottom: 0.12rem;
+    }
+
+    .cert-poster__name {
+      font-size: clamp(1.6rem, 3.5vw, 2.5rem);
+      font-weight: 900; letter-spacing: -0.03em;
+      margin: 0 0 0.2rem; word-break: break-word; line-height: 1.1;
+    }
+    .cert-poster__name::after {
+      content: ''; display: block; width: 54%; height: 3px;
+      background: linear-gradient(90deg, #ff8a2b, #f3ff4e);
+      margin-top: 0.28rem;
+    }
+
+    /* CPF — visível sempre que presente */
+    .cert-poster__cpf {
+      font-size: 0.83rem; color: #6b5642;
+      font-weight: 700; letter-spacing: 0.08em;
+      margin: 0.08rem 0 0.5rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .cert-poster__body {
+      font-size: 0.90rem; line-height: 1.5;
+      color: #3c3126; margin-bottom: 0.7rem;
+    }
+    .cert-poster__body strong {
+      font-weight: 900; text-transform: uppercase;
+      letter-spacing: 0.05em; color: #ff6c2c;
+    }
+
+    .cert-poster__meta {
+      margin-top: 0.9rem;
+      display: grid; grid-template-columns: repeat(2, 1fr);
+      gap: 0.5rem;
+    }
+    .cert-poster__meta-item {
+      background: #100e14; color: #fefbf4;
+      border-radius: 12px; padding: 0.6rem 0.8rem;
+      display: flex; flex-direction: column; gap: 0.18rem;
+      border: 1px solid rgba(255,255,255,0.07);
+    }
+    .cert-poster__meta-item span {
+      font-size: 0.56rem; letter-spacing: 0.22em;
+      text-transform: uppercase; color: rgba(255,255,255,0.42);
+    }
+    .cert-poster__meta-item strong {
+      font-size: 0.85rem; font-weight: 800;
+      color: #fef9ec; line-height: 1.3;
+    }
+
+    /* Branding institucional — uma linha, quase invisível */
+    .cert-poster__institutional {
+      font-size: 0.56rem; color: rgba(30,22,14,0.20);
+      font-weight: 500; letter-spacing: 0.04em;
+      margin-top: 0.75rem; padding-top: 0.5rem;
+      border-top: 1px solid rgba(30,22,14,0.05);
+      text-align: right;
+    }
+
+    /* ══════════════════════════════════════════════════
+       COLUNA DE AUTENTICAÇÃO — compacta, sem elipse
+    ══════════════════════════════════════════════════ */
+    .cert-auth {
+      background: #0d0f1a;
+      border-radius: 20px;
+      padding: 1rem 0.9rem 1.1rem;
+      border: 1px solid rgba(255,255,255,0.09);
+      display: flex; flex-direction: column; gap: 0;
+      /* SEM overflow:hidden, SEM ::before skewY — eliminam a elipse */
+    }
+
+    .cert-auth__eyebrow {
+      font-size: 0.56rem; letter-spacing: 0.28em;
+      text-transform: uppercase; color: #c7ff3a;
+      font-weight: 900; margin-bottom: 0.65rem;
+      text-align: center;
+    }
+
+    /* QR — tamanho fixo, sem min-height excessivo */
+    .cert-auth__qr {
+      background: #fefefc; border-radius: 12px; padding: 0.5rem;
+      display: flex; align-items: center; justify-content: center;
+      border: 2px solid #ff8a2b; margin-bottom: 0.55rem;
+    }
+    .cert-auth__qr > div { width: 100px; height: 100px; }
+    .cert-auth__qr canvas,
+    .cert-auth__qr img { width: 100px !important; height: 100px !important; display: block; }
+    .cert-auth__qr-fallback {
+      text-align: center; font-size: 0.70rem;
+      font-weight: 700; color: #232628; line-height: 1.4;
+    }
+
+    .cert-auth__qr-hint {
+      font-size: 0.58rem; letter-spacing: 0.06em;
+      text-transform: uppercase; color: rgba(255,255,255,0.48);
+      margin-bottom: 0.6rem; text-align: center;
+    }
+
+    .cert-auth__code-label {
+      font-size: 0.54rem; letter-spacing: 0.20em;
+      text-transform: uppercase; color: rgba(255,255,255,0.42);
+      margin-bottom: 0.18rem; text-align: center;
+    }
+
+    .cert-auth__code {
+      font-family: 'Courier New', monospace;
+      font-size: 0.78rem; font-weight: 700;
+      letter-spacing: 0.12em; color: #ffb347;
+      background: #10121f; border-radius: 9px;
+      padding: 0.45rem 0.55rem; text-align: center;
+      margin-bottom: 0.6rem;
+      border: 1px solid rgba(255,179,71,0.18);
+      word-break: break-all;
+    }
+
+    .cert-auth__url {
+      font-size: 0.62rem; line-height: 1.4;
+      color: rgba(255,255,255,0.55); text-align: center;
+    }
+    .cert-auth__url span {
+      display: block; text-transform: uppercase;
+      font-size: 0.50rem; letter-spacing: 0.18em;
+      color: rgba(255,255,255,0.36); margin-bottom: 0.12rem;
+    }
+    .cert-auth__url a {
+      color: #ffb347; font-weight: 800;
+      text-decoration: none; word-break: break-all;
+      font-size: 0.60rem;
+    }
+    .cert-auth__url a:hover { text-decoration: underline; }
+
+    /* ══════════════════════════════════════════════════
+       FORMULÁRIO DE AVALIAÇÃO MANUAL
+    ══════════════════════════════════════════════════ */
+    .manual-review-form {
+      border-radius: 16px; border: 1px solid var(--line-med);
+      background: rgba(255,138,31,0.04);
+      overflow: hidden; animation: fadeIn 0.3s ease-out;
+    }
+    .manual-review-form__header {
+      padding: 1.5rem 1.75rem 1.25rem;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,138,31,0.06);
+    }
+    .manual-review-form__badge {
+      display: inline-flex; align-items: center;
+      padding: 3px 10px; border-radius: 999px;
+      background: rgba(255,138,31,0.15);
+      border: 1px solid rgba(255,138,31,0.30);
+      color: var(--amber); font-size: 0.60rem;
+      font-weight: 900; text-transform: uppercase;
+      letter-spacing: 0.12em; margin-bottom: 0.65rem;
+    }
+    .manual-review-form__title {
+      font-size: 1.05rem; font-weight: 900;
+      color: var(--text); margin: 0 0 0.35rem; letter-spacing: -0.02em;
+    }
+    .manual-review-form__desc {
+      font-size: 0.82rem; color: var(--muted-2);
+      line-height: 1.55; font-weight: 600; margin: 0;
+    }
+    .manual-review-form__body {
+      padding: 1.5rem 1.75rem 1.75rem;
+      display: flex; flex-direction: column; gap: 1.1rem;
+    }
+    .manual-review-form .required { color: var(--amber); font-size: 0.75em; }
+
+    #cpfRequired { animation: slideIn 0.22s ease-out; }
+
+    /* ══════════════════════════════════════════════════
+       ANIMAÇÕES E RESPONSIVO
+    ══════════════════════════════════════════════════ */
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 520px) {
+      .cert-panel-body { padding: 1.5rem 1.25rem; }
+      .cert-head-title { font-size: 1.55rem; }
+      .cert-actions { flex-direction: column; }
+      .cert-actions .btn-ghost { flex: none; width: 100%; }
+      .manual-review-form__header,
+      .manual-review-form__body { padding-left: 1.25rem; padding-right: 1.25rem; }
+      .cert-poster__meta { grid-template-columns: 1fr; }
+    }
+
+    /* ══════════════════════════════════════════════════
+       BARRA DE LOGOS INSTITUCIONAL — rodapé do preview
+       Imagem portrait 768×1152px. Logos nos rows 963–1113.
+       A logos-bar fica DENTRO do cert-poster com margin-top positiva
+       para ser capturada corretamente pelo html2canvas.
+    ══════════════════════════════════════════════════ */
+    .cert-poster__logos-bar {
+      /* Sem margens negativas — fica dentro do bounding box do poster */
+      margin: 1rem 0 0;
+      border-radius: 0 0 clamp(20px, 3.5vw, 32px) clamp(20px, 3.5vw, 32px);
+      background: #07090e;
+      position: relative;
+      overflow: hidden;
+      height: 140px;
+    }
+    .cert-poster__logos-bar img {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* ══════════════════════════════════════════════════
+       VARIANTE SPEAKER — diferenciação visual real
+       O certificado de palestrante tem:
+       - borda laranja no painel de papel
+       - badge laranja
+       - acento de cor diferente no nome
+       - gradiente de fundo distinto
+    ══════════════════════════════════════════════════ */
+
+    /* Badge speaker — laranja vivo, contraste alto */
+    .cert-poster__badge--speaker {
+      background: linear-gradient(135deg, #ff7a2e 0%, #ffb347 100%);
+      color: #0b0600 !important;
+      border: none !important;
+      font-weight: 900;
+      letter-spacing: 0.18em;
+    }
+
+    /* Painel de papel speaker — fundo levemente dourado, borda laranja */
+    .cert-poster--speaker .cert-poster__main {
+      background: #fffaee;
+      box-shadow:
+        inset 0 0 0 2px rgba(255,122,46,0.22),
+        0 24px 52px rgba(10,7,5,0.16);
+    }
+
+    /* Linha under-name speaker — gradiente laranja-limão */
+    .cert-poster--speaker .cert-poster__name::after {
+      background: linear-gradient(90deg, #ff5a00, #ffb347, #ffd700);
+    }
+
+    /* Body text speaker — destaque laranja mais quente */
+    .cert-poster--speaker .cert-poster__body strong {
+      color: #d95c00;
+    }
+
+    /* Meta items speaker — fundo levemente âmbar */
+    .cert-poster--speaker .cert-poster__meta-item {
+      background: #100c00;
+      border-color: rgba(255,179,71,0.18);
+    }
+    .cert-poster--speaker .cert-poster__meta-item strong {
+      color: #fff4d0;
+    }
+
+    /* Fundo do cert-poster speaker — gradiente mais quente */
+    .cert-poster--speaker::before {
+      background: linear-gradient(128deg, rgba(255,150,46,0.30), rgba(255,90,0,0.04));
+    }
+
+    /* Texto vertical speaker */
+    .cert-poster--speaker .cert-poster__vertical {
+      color: rgba(255,150,60,0.50);
+    }
+
+    /* Acento no canto dobrado do painel speaker — mais saturado */
+    .cert-poster--speaker .cert-poster__main::after {
+      background: linear-gradient(90deg, #ff5500, #ffaa00);
+      opacity: 0.60;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <header class="site-header" id="siteHeader">
+    <a class="header-brand" href="certificados.html" aria-label="Certificate issuance">
+      <img src="../assets/axis-mark-placeholder.svg" alt="AXIS" class="header-logo"/>
+    </a>
+    <div class="header-title">
+      <p class="header-dates" style="font-size:.78rem;letter-spacing:.06em;font-weight:900;color:var(--text);margin:0">Certificados</p>
+      <p class="header-dates">10 e 11 de março · 2026</p>
+    </div>
+  </header>
+
+  <main class="cert-page">
+    <div class="cert-panel">
+      <div class="cert-panel-topbar"></div>
+      <div class="cert-panel-body">
+
+        <div class="cert-panel-head">
+          <img src="../assets/axis-mark-placeholder.svg" alt="AXIS Summit"/>
+          <p class="cert-head-kicker">AXIS Summit 2026 — A Cultura Vira o Jogo!</p>
+          <h1 class="cert-head-title">Certificados</h1>
+          <p class="cert-head-sub">10 e 11 de março &nbsp;·&nbsp; Porto Alegre, RS</p>
+          <div class="cert-brand-secondary">
+            <span>Gudi · Secretaria da Cultura · Governo do Estado do RS</span>
+          </div>
+        </div>
+
+        <form class="cert-form" id="certificateForm" novalidate>
+
+          <div><p class="cert-section-label">Dados do participante</p></div>
+
+          <!-- Honeypot anti-bot -->
+          <input type="text" name="_trap" id="formTrap" tabindex="-1" autocomplete="off"
+            aria-hidden="true"
+            style="position:absolute;opacity:0;height:0;width:0;pointer-events:none;overflow:hidden"/>
+
+          <div class="form-group">
+            <label for="nome">Nome completo</label>
+            <input type="text" id="nome" name="nome"
+              placeholder="Como consta no seu cadastro"
+              autocomplete="name" required/>
+            <span class="form-hint">Use o nome exato do seu cadastro no evento.</span>
+          </div>
+
+          <div class="form-group">
+            <label for="email">E-mail</label>
+            <input type="email" id="email" name="email"
+              placeholder="E-mail usado no cadastro do evento"
+              autocomplete="email" required/>
+          </div>
+
+          <div class="form-group">
+            <label for="cpf">CPF
+              <span style="font-size:0.8em;font-weight:700;opacity:.6">(opcional)</span>
+            </label>
+            <input type="text" id="cpf" name="cpf"
+              placeholder="000.000.000-00" maxlength="14"
+              autocomplete="off" style="font-variant-numeric:tabular-nums"/>
+            <span class="form-hint">Opcional. Se houver mais de um registro compatível, podemos pedir o CPF apenas para confirmar sua identidade.</span>
+          </div>
+
+          <div class="form-group">
+            <div class="checkbox-group">
+              <label class="checkbox-label" for="dia10">
+                <input type="checkbox" name="dias" value="10" id="dia10"/>
+                <span class="checkmark"></span>
+                10 de março de 2026
+                <span class="checkbox-label-day">Ter</span>
+              </label>
+              <label class="checkbox-label" for="dia11">
+                <input type="checkbox" name="dias" value="11" id="dia11"/>
+                <span class="checkmark"></span>
+                11 de março de 2026
+                <span class="checkbox-label-day">Qua</span>
+              </label>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-axis" id="emitBtn">
+            <span>Emitir Certificado</span>
+            <div class="loading-spinner" style="display:none;"></div>
+          </button>
+
+        </form>
+
+        <div id="resultMessage" class="message" role="alert" aria-live="polite"></div>
+
+        <div id="certResult" class="cert-result" aria-live="polite">
+          <div class="cert-result-bar"></div>
+          <div class="cert-result-inner">
+            <div id="certInfo"></div>
+            <div class="cert-actions">
+              <button class="btn-axis" id="downloadBtn" style="flex:1">
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                Baixar PDF
+              </button>
+              <button class="btn-ghost" id="validateBtn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                Validar
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <p class="cert-validate-note">
+          Para verificar a autenticidade de qualquer certificado, acesse<br/>
+          <a href="certificados-validator-v3.html" target="_blank">portfolio.example/certificates/validate</a>
+        </p>
+
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <p>
+      <strong>AXIS Summit</strong> — A Cultura Vira o Jogo! &nbsp;·&nbsp;
+      &copy; <span id="year"></span>
+      <span style="opacity:.50"> &nbsp;·&nbsp; Gudi · Secretaria da Cultura · Governo do Estado do RS</span>
+    </p>
+  </footer>
+
+  <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+  <script defer src="certificados-v3.js?v=20260317-speakerfix2"></script>
+</body>
+</html>

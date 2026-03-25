@@ -1,0 +1,309 @@
+/* ============================================================
+   Module: QR admin panel presentation layer.
+   What it does: Styles the schedule filters, QR card grid, sync feedback, and poster modal used by the activity administration flow.
+   Key design decisions: Uses dense cards with clear status chips so staff can quickly distinguish synchronized activities from missing-token edge cases.
+   System connections: Loaded by `admin-qr.html` and paired with the interactive behavior in `admin-qr.js`.
+   ============================================================ */
+
+/* ============================================================
+   AXIS Summit 2026 — admin-qr.css
+   ============================================================ */
+
+:root {
+  --bg:        #080c18;
+  --surface:   #0f1628;
+  --surface-2: #141d35;
+  --border:    rgba(255,255,255,.08);
+  --text:      #eef0f8;
+  --muted:     #8b96b8;
+  --brand:     #f47c20;
+  --brand-2:   #ffab5e;
+  --ok:        #2ecf87;
+  --err:       #ff5c6e;
+  --warn:      #ffbf47;
+  --shadow:    0 12px 32px rgba(0,0,0,.3);
+  --radius:    18px;
+  --radius-sm: 12px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: #080c18;
+  color: var(--text);
+  min-height: 100dvh;
+}
+
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background: radial-gradient(ellipse 70% 40% at 15% 0%, rgba(244,124,32,.07) 0%, transparent 60%);
+  pointer-events: none; z-index: 0;
+}
+
+a { color: inherit; text-decoration: none; }
+h1, h2, h3 { font-family: 'Syne', sans-serif; }
+.hidden { display: none !important; }
+.muted { color: var(--muted); font-size: .88rem; }
+.eyebrow { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--brand-2); display: block; }
+
+/* ── TOPBAR ─────────────────────────────────────────── */
+.topbar {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(8,12,24,.9);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-inner {
+  max-width: 1200px; margin: 0 auto;
+  padding: 10px 16px;
+  display: flex; align-items: center; gap: 12px;
+}
+.topbar-logo {
+  width: 36px; height: 36px; object-fit: contain;
+  border-radius: 8px; background: #fff; padding: 4px; flex-shrink: 0;
+}
+.topbar-title { flex: 1; }
+.topbar-title strong { font-size: .95rem; font-family: 'Syne', sans-serif; }
+.topbar-actions { display: flex; gap: 8px; }
+
+/* ── SHELL ─────────────────────────────────────────── */
+.shell {
+  max-width: 1200px; margin: 0 auto;
+  padding: 14px 14px 60px;
+  display: flex; flex-direction: column; gap: 12px;
+  position: relative; z-index: 1;
+}
+
+/* ── CARD BASE ─────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+/* ── FILTROS ─────────────────────────────────────────── */
+.filters-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.filters-row .full-col { grid-column: 1 / -1; }
+
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field span { font-size: .82rem; color: var(--muted); font-weight: 500; }
+.field input, .field select {
+  width: 100%; min-height: 46px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text); padding: 0 12px;
+  font-size: 16px; font-family: 'DM Sans', sans-serif;
+  outline: none; appearance: none; -webkit-appearance: none;
+}
+.field input:focus, .field select:focus { border-color: var(--brand); }
+
+/* ── SUMMARY ─────────────────────────────────────────── */
+.summary-card {
+  display: flex; align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap; gap: 10px;
+}
+.summary-text h2 { font-size: 1.05rem; }
+.summary-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* ── FEEDBACK ─────────────────────────────────────────── */
+.feedback {
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-size: .9rem; line-height: 1.45;
+  border: 1px solid transparent;
+}
+.feedback.success { background: rgba(46,207,135,.1);  border-color: rgba(46,207,135,.25); color: #b0f0d8; }
+.feedback.error   { background: rgba(255,92,110,.1);  border-color: rgba(255,92,110,.25); color: #ffd0d6; }
+.feedback.info    { background: rgba(255,191,71,.1);  border-color: rgba(255,191,71,.25); color: #ffe5a0; }
+
+/* ── BOTÕES ─────────────────────────────────────────── */
+.btn {
+  min-height: 48px; border-radius: var(--radius-sm);
+  border: none; padding: 0 18px;
+  font-weight: 700; font-size: 14px;
+  font-family: 'Syne', sans-serif;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: opacity .15s, transform .1s;
+  white-space: nowrap; -webkit-tap-highlight-color: transparent;
+}
+.btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.btn-primary { background: linear-gradient(135deg, var(--brand), var(--brand-2)); color: #1a0d00; }
+.btn-ghost   { background: rgba(255,255,255,.06); color: var(--text); border: 1px solid var(--border); }
+.btn.sm      { min-height: 38px; padding: 0 14px; font-size: 13px; border-radius: 10px; }
+.btn.full    { width: 100%; }
+
+/* ── GRID DE ATIVIDADES ──────────────────────────────── */
+.activities-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+/* ── CARD DE ATIVIDADE ───────────────────────────────── */
+.act-card {
+  background: linear-gradient(160deg, rgba(244,124,32,.07) 0%, var(--surface) 40%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+  box-shadow: var(--shadow);
+}
+
+.act-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px 0;
+}
+.act-head img {
+  width: 36px; height: 36px;
+  border-radius: 8px; background: #fff; padding: 3px;
+  object-fit: contain; flex-shrink: 0;
+}
+.act-badge {
+  padding: 4px 10px; border-radius: 999px;
+  background: rgba(244,124,32,.14);
+  border: 1px solid rgba(244,124,32,.28);
+  color: #ffd4ae; font-size: .75rem; font-weight: 700;
+  font-family: 'Syne', sans-serif;
+}
+
+.act-body {
+  padding: 12px 14px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  flex: 1;
+}
+
+.act-title {
+  font-size: 1rem; font-weight: 700; line-height: 1.3;
+  font-family: 'Syne', sans-serif;
+}
+
+.act-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  padding: 4px 10px; border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid var(--border);
+  font-size: .78rem; color: var(--muted);
+}
+
+.act-status { display: flex; flex-wrap: wrap; gap: 6px; }
+.act-status span {
+  padding: 4px 10px; border-radius: 999px;
+  font-size: .76rem; font-weight: 700;
+  border: 1px solid var(--border);
+}
+.s-ok   { background: rgba(46,207,135,.1);  color: #b0f0d8; border-color: rgba(46,207,135,.28) !important; }
+.s-warn { background: rgba(255,191,71,.1);  color: #ffe5a0; border-color: rgba(255,191,71,.28) !important; }
+.s-err  { background: rgba(255,92,110,.1);  color: #ffd0d6; border-color: rgba(255,92,110,.28) !important; }
+
+/* ── PAINEL QR ─────────────────────────────────────── */
+.qr-panel {
+  display: grid;
+  grid-template-columns: 152px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.qr-box {
+  width: 152px; height: 152px;
+  border-radius: 16px; background: #fff;
+  padding: 8px;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; flex-shrink: 0;
+}
+.qr-box img, .qr-box canvas { width: 100% !important; height: 100% !important; }
+.qr-placeholder {
+  font-size: .75rem; color: #aaa; text-align: center; padding: 8px;
+}
+
+.qr-stack { display: flex; flex-direction: column; gap: 8px; }
+
+.url-box {
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,.2);
+  padding: 8px 10px;
+  font-size: .75rem;
+  word-break: break-all;
+  color: #c8d0ec;
+  line-height: 1.4;
+  min-height: 36px;
+}
+
+.counter {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--border);
+  font-size: .82rem;
+}
+.counter strong { color: var(--brand-2); }
+
+.act-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+.act-actions .btn { min-height: 40px; font-size: .8rem; border-radius: 10px; }
+
+/* ── MODAL POSTER ────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.78);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200; padding: 16px;
+}
+.modal-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  position: relative; max-width: 640px; width: 100%;
+  display: flex; flex-direction: column; gap: 12px;
+  box-shadow: 0 32px 80px rgba(0,0,0,.5);
+}
+.modal-close {
+  position: absolute; top: 12px; right: 12px;
+  width: 34px; height: 34px;
+  background: rgba(255,255,255,.08); border: none;
+  color: var(--text); border-radius: 999px;
+  font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+#posterCanvas { width: 100%; height: auto; border-radius: 12px; }
+.modal-footer { display: grid; }
+
+/* ── RESPONSIVO ─────────────────────────────────────── */
+@media (max-width: 860px) {
+  .topbar-title { display: none; }
+  .filters-row { grid-template-columns: 1fr 1fr; }
+  .filters-row .full-col { grid-column: 1 / -1; }
+  .activities-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 540px) {
+  .filters-row { grid-template-columns: 1fr; }
+  .qr-panel { grid-template-columns: 1fr; }
+  .qr-box { width: 100%; max-width: 180px; height: auto; aspect-ratio: 1/1; margin: 0 auto; }
+  .act-actions { grid-template-columns: 1fr; }
+  .summary-actions { width: 100%; }
+  .summary-actions .btn { width: 100%; }
+  .topbar-actions .btn:first-child { display: none; }
+}

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<!--
+  Module: Monitor operations portal.
+  What it does: Provides the authenticated front-end used by on-site staff for attendee lookup, speaker check-in, late registration, and live operational metrics.
+  Key design decisions: The UI is mobile-first, optimized for fast repeated actions, and split into public, speaker, and late-registration tabs to reduce operator error.
+  System connections: Loads shared API utilities from `web/shared`, sends all operational mutations to `apps-script/axis-credenciamento.gs`, and links into the QR admin flow.
+-->
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>AXIS Summit | Monitor Operations</title>
+  <meta name="twitter:image" content="https://portfolio.example/assets/axis-mark-placeholder.svg" />
+  <meta name="twitter:description" content="Painel operacional dos monitores do AXIS Summit para credenciamento, controle de fluxo e apoio as atividades presenciais do evento." />
+  <meta name="twitter:title" content="AXIS Summit | Monitor Operations" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://portfolio.example/axis-summit/monitor-operations.html" />
+  <meta property="og:image" content="https://portfolio.example/assets/axis-mark-placeholder.svg" />
+  <meta property="og:description" content="Painel operacional dos monitores do AXIS Summit para credenciamento, controle de fluxo e apoio as atividades presenciais do evento." />
+  <meta property="og:title" content="AXIS Summit | Monitor Operations" />
+  <link rel="canonical" href="https://portfolio.example/axis-summit/monitor-operations.html" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="description" content="Painel operacional dos monitores do AXIS Summit para credenciamento, controle de fluxo e apoio as atividades presenciais do evento." />
+  <meta name="theme-color" content="#f47c20" />
+  <link rel="icon" type="image/svg+xml" href="../assets/axis-mark-placeholder.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="monitores.css" />
+</head>
+<body>
+
+  <!-- ── TELA DE LOGIN ───────────────────────────────── -->
+  <div id="screenLogin" class="screen active">
+    <div class="login-wrap">
+      <header class="login-header">
+        <img src="../assets/axis-mark-placeholder.svg" alt="AXIS Summit" class="login-logo" />
+        <div>
+          <p class="eyebrow">Sistema de Credenciamento</p>
+          <h1>AXIS Summit <span class="accent">2026</span></h1>
+        </div>
+      </header>
+
+      <div class="login-card">
+        <h2>Acesso de monitor</h2>
+        <p class="sub">Use seu CPF e senha fornecidos pela organização.</p>
+
+        <label class="field">
+          <span>CPF</span>
+          <input id="loginCpf" type="text" inputmode="numeric" maxlength="14"
+                 placeholder="000.000.000-00" autocomplete="username" />
+        </label>
+        <label class="field">
+          <span>Senha</span>
+          <input id="loginSenha" type="password" maxlength="80"
+                 placeholder="Sua senha" autocomplete="current-password" />
+        </label>
+        <button id="loginBtn" class="btn btn-primary full">Entrar</button>
+        <div id="loginFeedback" class="feedback hidden" role="alert"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TELA PRINCIPAL (pós-login) ─────────────────── -->
+  <div id="screenApp" class="screen hidden">
+
+    <!-- Topbar fixa -->
+    <header class="topbar">
+      <div class="topbar-inner">
+        <img src="../assets/axis-mark-placeholder.svg" alt="AXIS" class="topbar-logo" />
+        <div class="topbar-info">
+          <span class="topbar-name" id="topbarName">—</span>
+          <span class="topbar-role">Monitor</span>
+        </div>
+        <div class="topbar-actions">
+          <a href="../qr/admin-qr.html" class="btn btn-ghost sm">QR</a>
+          <button id="logoutBtn" class="btn btn-ghost sm">Sair</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="app-main">
+
+      <!-- Seletor de dia + refresh -->
+      <section class="day-bar card">
+        <label class="field mini">
+          <span>Dia do evento</span>
+          <select id="diaEvento">
+            <option value="2026-03-10">10 de março (Dia 1)</option>
+            <option value="2026-03-11">11 de março (Dia 2)</option>
+          </select>
+        </label>
+        <button id="refreshBtn" class="btn btn-ghost sm" aria-label="Atualizar dados">↺ Atualizar</button>
+      </section>
+
+      <!-- Stats -->
+      <section class="stats-row">
+        <div class="stat-card card">
+          <span class="stat-label">Check-ins hoje</span>
+          <strong id="statTotal" class="stat-val">—</strong>
+        </div>
+        <div class="stat-card card">
+          <span class="stat-label">Speakers hoje</span>
+          <strong id="statSpeakers" class="stat-val">—</strong>
+        </div>
+        <div class="stat-card card">
+          <span class="stat-label">Nesta hora</span>
+          <strong id="statHora" class="stat-val">—</strong>
+        </div>
+      </section>
+
+      <!-- Painel de diagnóstico — remover após corrigir o backend -->
+      <div id="axisDebug" style="
+        background:rgba(255,191,71,.08);
+        border:1px solid rgba(255,191,71,.3);
+        border-radius:10px;
+        padding:10px 12px;
+        font-size:.72rem;
+        color:#ffe5a0;
+        word-break:break-all;
+        line-height:1.6;
+        white-space:pre-wrap;
+      ">Aguardando...</div>
+
+      <!-- Abas de fluxo -->
+      <nav class="tab-nav">
+        <button class="tab active" data-tab="tabPublico">Público</button>
+        <button class="tab" data-tab="tabSpeakers">Speakers</button>
+        <button class="tab" data-tab="tabPosterior">Cadastro posterior</button>
+      </nav>
+
+      <!-- ─ ABA: PÚBLICO GERAL ───────────────────────── -->
+      <section id="tabPublico" class="tab-panel card active">
+        <div class="panel-head">
+          <h2>Credenciar público</h2>
+          <p class="sub">Busque por nome ou e-mail.</p>
+        </div>
+        <div class="search-row">
+          <input id="buscaPublico" type="search"
+                 placeholder="Nome ou e-mail (mín. 2 chars)"
+                 autocomplete="off" autocorrect="off" />
+          <button id="buscaPublicoBtn" class="btn btn-primary">Buscar</button>
+        </div>
+        <div id="buscaPublicoFeedback" class="feedback hidden" role="alert"></div>
+        <div id="resultadosPublico" class="results" aria-live="polite"></div>
+      </section>
+
+      <!-- ─ ABA: SPEAKERS ──────────────────────────────── -->
+      <section id="tabSpeakers" class="tab-panel card hidden">
+        <div class="panel-head">
+          <h2>Credenciar speaker</h2>
+          <p class="sub">Busque pelo nome do speaker.</p>
+        </div>
+        <div class="search-row">
+          <input id="buscaSpeaker" type="search"
+                 placeholder="Nome do speaker (mín. 2 chars)"
+                 autocomplete="off" autocorrect="off" />
+          <button id="buscaSpeakerBtn" class="btn btn-primary">Buscar</button>
+        </div>
+        <div id="buscaSpeakerFeedback" class="feedback hidden" role="alert"></div>
+        <div id="resultadosSpeakers" class="results" aria-live="polite"></div>
+      </section>
+
+      <!-- ─ ABA: CADASTRO POSTERIOR ────────────────────── -->
+      <section id="tabPosterior" class="tab-panel card hidden">
+        <div class="panel-head">
+          <h2>Cadastro posterior</h2>
+          <p class="sub">Para quem não está na base. Será incluído e credenciado.</p>
+        </div>
+        <label class="field"><span>Nome *</span>
+          <input id="cadNome" type="text" maxlength="200" autocomplete="name" placeholder="Nome completo" />
+        </label>
+        <label class="field"><span>CPF</span>
+          <input id="cadCpf" type="text" inputmode="numeric" maxlength="14" placeholder="Opcional" />
+        </label>
+        <label class="field"><span>E-mail</span>
+          <input id="cadEmail" type="email" maxlength="200" autocomplete="email" placeholder="email@dominio.com" />
+        </label>
+        <label class="field"><span>Telefone</span>
+          <input id="cadTelefone" type="tel" maxlength="20" autocomplete="tel" placeholder="(51) 99999-9999" />
+        </label>
+        <button id="cadBtn" class="btn btn-primary full">Salvar e credenciar</button>
+        <div id="cadFeedback" class="feedback hidden" role="alert"></div>
+      </section>
+
+      <!-- Gráfico de fluxo -->
+      <section class="card chart-section">
+        <h2>Fluxo por hora</h2>
+        <div id="barChart" class="chart" aria-label="Fluxo de check-ins por hora"></div>
+      </section>
+
+    </main>
+  </div><!-- /screenApp -->
+
+  <script src="../shared/axis-common.js"></script>
+  <script src="../shared/axis-api.js"></script>
+  <script src="monitores.js?v=20260309-1313"></script>
+</body>
+</html>

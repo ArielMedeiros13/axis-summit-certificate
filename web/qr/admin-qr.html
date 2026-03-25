@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<!--
+  Module: QR administration panel.
+  What it does: Lets operators synchronize schedule data, generate activity QR codes, copy direct links, and export poster assets for on-site signage.
+  Key design decisions: Uses the same activity-ID logic as the backend, keeps poster generation client-side, and surfaces sync state per activity so missing tokens are obvious before the event opens.
+  System connections: Loads sample schedule data from `web/data`, uses shared utilities from `web/shared`, and talks to `apps-script/axis-credenciamento.gs`.
+-->
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>AXIS Summit | Painel de QR das atividades</title>
+  <meta name="twitter:image" content="https://portfolio.example/assets/axis-mark-placeholder.svg" />
+  <meta name="twitter:description" content="Painel administrativo do AXIS Summit para sincronizar atividades, gerar QR codes e baixar materiais de credenciamento." />
+  <meta name="twitter:title" content="AXIS Summit | Painel de QR das atividades" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://portfolio.example/axis-summit/qr-admin.html" />
+  <meta property="og:image" content="https://portfolio.example/assets/axis-mark-placeholder.svg" />
+  <meta property="og:description" content="Painel administrativo do AXIS Summit para sincronizar atividades, gerar QR codes e baixar materiais de credenciamento." />
+  <meta property="og:title" content="AXIS Summit | Painel de QR das atividades" />
+  <link rel="canonical" href="https://portfolio.example/axis-summit/qr-admin.html" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="description" content="Painel administrativo do AXIS Summit para sincronizar atividades, gerar QR codes e baixar materiais de credenciamento." />
+  <meta name="theme-color" content="#f47c20" />
+  <link rel="icon" type="image/svg+xml" href="../assets/axis-mark-placeholder.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <link rel="stylesheet" href="admin-qr.css" />
+</head>
+<body>
+  <h1 style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;">Painel administrativo de QR codes do AXIS Summit</h1>
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <img src="../assets/axis-mark-placeholder.svg" alt="AXIS" class="topbar-logo" />
+      <div class="topbar-title">
+        <span class="eyebrow">QR de Atividades</span>
+        <strong>Painel Admin</strong>
+      </div>
+      <div class="topbar-actions">
+        <a href="../credentialing/monitores.html" class="btn btn-ghost sm">← Monitores</a>
+        <button id="syncBtn" class="btn btn-primary sm">Sincronizar</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell">
+
+    <!-- Feedback global -->
+    <div id="globalFeedback" class="feedback hidden" role="alert"></div>
+
+    <!-- Filtros -->
+    <section class="card filters-card">
+      <div class="filters-row">
+        <label class="field">
+          <span>Dia</span>
+          <select id="filtroDia">
+            <option value="">Todos os dias</option>
+            <option value="2026-03-10">10 de março</option>
+            <option value="2026-03-11">11 de março</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Tipo</span>
+          <select id="filtroTipo"><option value="">Todos</option></select>
+        </label>
+        <label class="field">
+          <span>Palco</span>
+          <select id="filtroPalco"><option value="">Todos</option></select>
+        </label>
+        <label class="field full-col">
+          <span>Busca</span>
+          <input id="filtroTexto" type="search" placeholder="Título da atividade..." />
+        </label>
+      </div>
+    </section>
+
+    <!-- Resumo -->
+    <section class="card summary-card">
+      <div class="summary-text">
+        <h2 id="summaryTitle">Carregando...</h2>
+        <p id="summaryHint" class="muted"></p>
+      </div>
+      <div class="summary-actions">
+        <button id="copyVisibleBtn" class="btn btn-ghost sm">Copiar links visíveis</button>
+        <button id="downloadAllPostersBtn" class="btn btn-primary sm">Baixar pôsteres</button>
+      </div>
+    </section>
+
+    <!-- Grid de atividades -->
+    <section id="grid" class="activities-grid"></section>
+
+  </main>
+
+  <!-- Modal: Poster AXIS para download -->
+  <div id="posterModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Poster AXIS">
+    <div class="modal-box">
+      <button id="posterClose" class="modal-close" aria-label="Fechar">✕</button>
+      <canvas id="posterCanvas" width="600" height="820"></canvas>
+      <div class="modal-footer">
+        <button id="posterDownload" class="btn btn-primary full">⬇ Baixar imagem PNG</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../shared/axis-common.js"></script>
+  <script src="../data/axis-events.sample.js"></script>
+  <script src="../shared/axis-api.js"></script>
+  <script src="admin-qr.js"></script>
+</body>
+</html>

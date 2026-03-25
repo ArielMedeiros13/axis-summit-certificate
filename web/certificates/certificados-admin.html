@@ -1,0 +1,143 @@
+<!doctype html>
+<!--
+  Module: Manual certificate administration page.
+  What it does: Provides an operator-only form for registering manual public or speaker participants directly into the certificate backend.
+  Key design decisions: Separates exception handling from the public issuer so recovery work does not complicate the main participant flow.
+  System connections: Loads `certificados-admin.js`, writes to `apps-script/axis-certificados.gs`, and links back into `certificados.html`.
+-->
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <title>Painel Manual de Certificados - AXIS Summit 2026</title>
+
+  <link rel="icon" href="../assets/axis-mark-placeholder.svg" type="image/svg+xml"/>
+  <link rel="apple-touch-icon" href="../assets/axis-mark-placeholder.svg"/>
+  <link rel="stylesheet" href="certificados-admin.css?v=20260317-admin1"/>
+</head>
+<body>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <a class="header-brand" href="certificados.html" aria-label="Go to the certificate issuer">
+      <img class="header-logo" src="../assets/axis-mark-placeholder.svg" alt="AXIS Summit"/>
+    </a>
+    <div class="header-title">
+      <strong>Painel Manual de Certificados</strong>
+      <span class="header-subtitle">Cadastro simples e separado do fluxo principal</span>
+    </div>
+    <a class="header-link" href="certificados.html">Ir para emissão</a>
+  </header>
+
+  <main class="admin-page">
+    <section class="admin-card">
+      <div class="admin-card__topbar"></div>
+      <div class="admin-card__body">
+        <div class="admin-head">
+          <p class="admin-kicker">Admin</p>
+          <h1>Lançamento manual de usuários</h1>
+          <p class="admin-copy">
+            Cadastre participantes manualmente na mesma base usada pela emissão normal, sem mexer no emissor principal.
+          </p>
+        </div>
+
+        <form id="manualAdminForm" class="admin-form" novalidate>
+          <div>
+            <p class="admin-section-label">Tipo de participante</p>
+            <div class="type-grid" role="radiogroup" aria-label="Tipo de participante">
+              <label class="type-option">
+                <input type="radio" name="participantType" value="publico" checked/>
+                <span class="type-option__content">
+                  <strong>Público geral</strong>
+                  <small>Grava no fluxo comum e habilita emissão por dia.</small>
+                </span>
+              </label>
+              <label class="type-option">
+                <input type="radio" name="participantType" value="speaker"/>
+                <span class="type-option__content">
+                  <strong>Speaker</strong>
+                  <small>Grava no fluxo de speaker com atividade e função opcionais.</small>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <p class="admin-section-label">Dados básicos</p>
+            <div class="form-grid">
+              <label class="form-group form-group--full">
+                <span>Nome</span>
+                <input type="text" id="nome" name="nome" placeholder="Nome completo" autocomplete="name" required/>
+              </label>
+              <label class="form-group">
+                <span>CPF</span>
+                <input type="text" id="cpf" name="cpf" placeholder="000.000.000-00" maxlength="14" inputmode="numeric" autocomplete="off" required/>
+              </label>
+              <label class="form-group">
+                <span>E-mail</span>
+                <input type="email" id="email" name="email" placeholder="email@exemplo.com" autocomplete="email" required/>
+              </label>
+            </div>
+          </div>
+
+          <section id="speakerFields" class="conditional-block is-hidden" aria-hidden="true">
+            <p class="admin-section-label">Dados do speaker</p>
+            <div class="form-grid">
+              <label class="form-group form-group--full">
+                <span>Atividade ou mesa</span>
+                <input type="text" id="atividade" name="atividade" placeholder="Nome da atividade, painel ou mesa"/>
+              </label>
+              <label class="form-group form-group--full">
+                <span>Função ou cargo</span>
+                <input type="text" id="cargo" name="cargo" placeholder="Ex.: mediadora, debatedor, convidado"/>
+              </label>
+            </div>
+          </section>
+
+          <section id="publicFields" class="conditional-block">
+            <p class="admin-section-label">Dias de participação</p>
+            <div class="day-grid">
+              <label class="day-option">
+                <input type="checkbox" name="dias" value="10"/>
+                <span>
+                  <strong>10 de março</strong>
+                  <small>Terça-feira</small>
+                </span>
+              </label>
+              <label class="day-option">
+                <input type="checkbox" name="dias" value="11"/>
+                <span>
+                  <strong>11 de março</strong>
+                  <small>Quarta-feira</small>
+                </span>
+              </label>
+            </div>
+            <p class="field-hint">Para público geral, pelo menos um dia precisa ser salvo para compatibilidade com a emissão.</p>
+          </section>
+
+          <div class="admin-actions">
+            <button type="submit" class="btn-primary" id="saveBtn">
+              <span id="saveBtnText">Salvar participante</span>
+              <span id="saveSpinner" class="loading-spinner is-hidden" aria-hidden="true"></span>
+            </button>
+            <button type="button" class="btn-secondary" id="resetBtn">Limpar</button>
+          </div>
+        </form>
+
+        <div id="feedback" class="feedback is-hidden" role="alert" aria-live="polite"></div>
+        <div id="resultCard" class="result-card is-hidden" aria-live="polite"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>
+      <strong>AXIS Summit</strong> · Painel manual de certificados ·
+      <a href="certificados.html">Emissão normal</a>
+    </p>
+  </footer>
+
+  <script defer src="certificados-admin.js?v=20260317-admin1"></script>
+</body>
+</html>
